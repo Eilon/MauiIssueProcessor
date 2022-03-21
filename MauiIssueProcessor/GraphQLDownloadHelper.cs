@@ -4,6 +4,7 @@
 
 using CreateMikLabelModel.DL.Common;
 using CreateMikLabelModel.Models;
+using DataAccess;
 using GraphQL;
 using GraphQL.Client.Http;
 using GraphQL.Client.Serializer.Newtonsoft;
@@ -17,6 +18,18 @@ using System.Threading.Tasks;
 
 namespace CreateMikLabelModel.DL
 {
+    class IssueRow
+    {
+        public long Number { get; set; }
+        public string Title { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+        public DateTimeOffset? ClosedAt { get; set; }
+        public string MilestoneName { get; set; }
+        public bool IsOpen { get; set; }
+        public string PrimaryArea { get; set; }
+        public bool IsBug { get; set; }
+    }
+
     class GraphQLDownloadHelper
     {
         public const int MaxRetryCount = 25;
@@ -24,7 +37,7 @@ namespace CreateMikLabelModel.DL
         private const string DeletedUser = "ghost";
 
         public static async Task<bool> DownloadFastUsingGraphQLAsync(
-            Dictionary<(DateTimeOffset, DateTimeOffset?, long, string), string> outputLinesExcludingHeader,
+            List<IssueRow> outputLinesExcludingHeader,
             (string owner, string repo)[] repoCombo,
             StreamWriter outputWriter)
         {
@@ -51,12 +64,16 @@ namespace CreateMikLabelModel.DL
             }
             finally
             {
-                CommonHelper.action(outputLinesExcludingHeader.Values.ToList(), outputWriter);
+                var ordered = outputLinesExcludingHeader
+                    .OrderBy(x => x.Number);
+
+                var openClosedTable = new DataTableBuilder().FromEnumerable(ordered);
+                openClosedTable.SaveCSV(@"C:\Users\elipton\Downloads\maui-issues-all-ql.csv");
             }
         }
 
         public static async Task<bool> ProcessGitHubIssueData<T>(
-            GraphQLHttpClient ghGraphQL, string owner, string repo, Dictionary<(DateTimeOffset, DateTimeOffset?, long, string), string> outputLines,
+            GraphQLHttpClient ghGraphQL, string owner, string repo, List<IssueRow> outputLines,
             Func<GraphQLHttpClient, string, string, string, Task<GitHubListPage<T>>> getPage) where T : IssuesNode
         {
             Console.WriteLine($"Getting all issues for {owner}/{repo}...");
@@ -85,7 +102,7 @@ namespace CreateMikLabelModel.DL
 
                     foreach (var issue in issues)
                     {
-                        WriteCsvIssue(outputLines, issue, repo);
+                        WriteCsvIssue(outputLines, issue);
                     }
                     hasNextPage = issuePage.Issues.Repository.Issues.PageInfo.HasNextPage;
                     afterID = issuePage.Issues.Repository.Issues.PageInfo.EndCursor;
@@ -118,16 +135,30 @@ namespace CreateMikLabelModel.DL
             return true;
         }
 
-        private static void WriteCsvIssue(Dictionary<(DateTimeOffset, DateTimeOffset?, long, string), string> outputLines, IssuesNode issue
-            // TODO: lookup HtmlUrl for transferred files, may be different than repo
-            , string repo)
+        private static void WriteCsvIssue(List<IssueRow> outputLines, IssuesNode issue)
         {
             var area = issue.Labels.Nodes.FirstOrDefault(l => LabelHelper.IsAreaLabel(l.Name))?.Name;
-            var createdAt = issue.CreatedAt.UtcDateTime.ToFileTimeUtc();
-            var closedAt = issue.ClosedAt?.UtcDateTime.ToFileTimeUtc() ?? 0;
+            if (!string.IsNullOrEmpty(area))
+            {
+                var indexOfSpace = area.IndexOf(' ');
+                if (indexOfSpace != -1)
+                {
+                    area = area.Substring(0, indexOfSpace);
+                }
+            }
+
             outputLines.Add(
-                (issue.CreatedAt, issue.ClosedAt, issue.Number, repo),
-                $"{createdAt},{closedAt},{repo},{issue.Number}\t{issue.Number}\t{area}\t{issue.Title}\t0\t");
+                new IssueRow
+                {
+                    Number = issue.Number,
+                    Title = issue.Title.Replace('\"', '\''),
+                    CreatedAt = issue.CreatedAt,
+                    ClosedAt = issue.ClosedAt,
+                    IsOpen = issue.ClosedAt == null,
+                    PrimaryArea = area,
+                    IsBug = issue.Labels.Nodes.Any(l => l.Name == "t/bug"),
+                    MilestoneName = issue.Milestone?.Title,
+                });
         }
 
         public static async Task<GitHubListPage<T>> GetGitHubIssuePage<T>(GraphQLHttpClient ghGraphQL, string owner, string repo, string afterID)
@@ -148,7 +179,11 @@ namespace CreateMikLabelModel.DL
           },
           totalCount
         }
-      }
+        milestone
+        {
+          title
+        }
+     }
       pageInfo {
         hasNextPage
         endCursor

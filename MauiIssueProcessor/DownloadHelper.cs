@@ -15,8 +15,7 @@ namespace CreateMikLabelModel.DL
 
             using (var outputWriter = new StreamWriter(outputPath))
             {
-                CommonHelper.WriteCsvHeader(outputWriter);
-                var outputLinesExcludingHeader = new Dictionary<(DateTimeOffset, DateTimeOffset?, long, string), string>();
+                var outputLinesExcludingHeader = new List<IssueRow>();
                 bool completed = false;
 
                 completed = await GraphQLDownloadHelper.DownloadFastUsingGraphQLAsync(outputLinesExcludingHeader, repoCombo, outputWriter);
@@ -26,7 +25,7 @@ namespace CreateMikLabelModel.DL
             }
 
             stopWatch.Stop();
-            Console.WriteLine($"Done writing TSV in {stopWatch.ElapsedMilliseconds}ms");
+            Console.WriteLine($"Done writing CSV in {stopWatch.ElapsedMilliseconds}ms");
             return 1;
         }
     }

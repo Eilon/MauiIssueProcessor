@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using Octokit;
 using System;
 using System.Collections.Generic;
 
@@ -41,11 +42,7 @@ namespace CreateMikLabelModel.Models
         public DateTimeOffset? ClosedAt { get; set; }
         public Actor Author { get; set; }
         public Labels Labels { get; set; }
-    }
-
-    public class PullRequestsNode : IssuesNode
-    {
-        public Items<ChangedPrFiles> Files { get; set; }
+        public Milestone Milestone { get; set; }
     }
 
     public class Actor
@@ -53,9 +50,9 @@ namespace CreateMikLabelModel.Models
         public string Login { get; set; }
     }
 
-    public class ChangedPrFiles
+    public class Milestone
     {
-        public string Path { get; set; }
+        public string Title { get; set; }
     }
 
     public class Labels

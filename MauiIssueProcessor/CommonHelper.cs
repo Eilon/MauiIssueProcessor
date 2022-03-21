@@ -37,25 +37,5 @@ namespace CreateMikLabelModel.DL.Common
                     parameter: gitHubAccessToken);
             return graphQLHttpClient;
         }
-
-        public static readonly Action<List<string>, StreamWriter> action = (list, outputWriter) =>
-        {
-            var ordered = list
-                .Select(x => (x.Split('\t')[0].Split(','), x))
-                .OrderBy(x => long.Parse(x.Item1[0]))   //-> first by created date
-                .ThenBy(x => x.Item1[1])                //-> then by repo name
-                .ThenBy(x => long.Parse(x.Item1[2]))    //-> then by issue number
-                .Select(x => x.x);
-
-            foreach (var item in ordered)
-            {
-                outputWriter.WriteLine(item);
-            }
-        };
-
-        public static void WriteCsvHeader(StreamWriter outputWriter)
-        {
-            outputWriter.WriteLine("CombinedID\tID\tArea\tTitle\tDescription\tAuthor\tIsPR\tFilePaths");
-        }
     }
 }

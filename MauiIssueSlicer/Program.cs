@@ -4,31 +4,8 @@ using Newtonsoft.Json;
 // See https://aka.ms/new-console-template for more information
 Console.WriteLine("Hello, World!");
 
-var dataPath = @"C:\Users\elipton\Downloads\maui-issues-all.csv";
+var dataPath = @"C:\Users\elipton\Downloads\maui-issues-all-ql.csv";
 var csvTable = new DataTableBuilder().ReadCsv(dataPath);
-
-var milestoneMapping = new Dictionary<string, string>()
-{
-    { "7770503", "6.0.300-rc.1" },
-    { "7617522", "6.0.300-preview.14" },
-    { "6929376", ".NET 7" },
-    { "7665569", "Future" },
-    { "7526548", "6.0.200-preview.13" },
-    { "6954947", "6.0.100-rc.1" },
-    { "7286786", "6.0.200-preview.11" },
-    { "7194018", "6.0.101-preview.10" },
-    { "7280520", "6.0.200-preview.12" },
-    { "7016119", "6.0.101-preview.9" },
-    { "6904587", "6.0.100-preview.7" },
-};
-
-// These milestones aren't used yet
-//{ "", "6.0.300" },
-//{ "", "6.0.300-servicing" },
-//{ "", "6.0.100-preview.6" },
-
-var mauiGAMilestones = milestoneMapping.Values.Where(m => m.StartsWith("6.0", StringComparison.OrdinalIgnoreCase) && !m.Contains("servicing", StringComparison.OrdinalIgnoreCase)).ToList();
-var mauiFutureMilestones = new List<string> { ".NET 7", "Future" };
 
 Console.WriteLine($"Loaded {csvTable.NumRows} rows of data");
 
@@ -38,32 +15,39 @@ var numberColumnIndex = GetColumnIndex(columnNamesByIndex, "Number");
 var titleColumnIndex = GetColumnIndex(columnNamesByIndex, "Title");
 var createdAtColumnIndex = GetColumnIndex(columnNamesByIndex, "CreatedAt");
 var closedAtColumnIndex = GetColumnIndex(columnNamesByIndex, "ClosedAt");
-var milestoneIdColumnIndex = GetColumnIndex(columnNamesByIndex, "MilestoneId");
-var stateColumnIndex = GetColumnIndex(columnNamesByIndex, "State");
-var labelsColumnIndex = GetColumnIndex(columnNamesByIndex, "Labels");
+var milestoneNameColumnIndex = GetColumnIndex(columnNamesByIndex, "MilestoneName");
+var isOpenColumnIndex = GetColumnIndex(columnNamesByIndex, "IsOpen");
+var primaryAreaColumnIndex = GetColumnIndex(columnNamesByIndex, "PrimaryArea");
+var isBugColumnIndex = GetColumnIndex(columnNamesByIndex, "IsBug");
 
 var strongIssueRows = new List<IssueRow>();
 
 foreach (var csvIssueRow in csvTable.Rows)
 {
-    var labels = JsonConvert.DeserializeObject<GitHubLabel[]>(csvIssueRow.Values[labelsColumnIndex]);
-
-    milestoneMapping.TryGetValue(csvIssueRow.Values[milestoneIdColumnIndex], out var resolvedMilestoneName);
-
     var strongIssueRow = new IssueRow()
     {
         Number = Int32.Parse(csvIssueRow.Values[numberColumnIndex]),
         Title = csvIssueRow.Values[titleColumnIndex],
         CreatedAt = DateTimeOffset.Parse(csvIssueRow.Values[createdAtColumnIndex]),
         ClosedAt = csvIssueRow.Values[closedAtColumnIndex].Length > 0 ? DateTimeOffset.Parse(csvIssueRow.Values[closedAtColumnIndex]) : null,
-        IsOpen = csvIssueRow.Values[stateColumnIndex] == "open",
-        PrimaryArea = labels.FirstOrDefault(l => l.name.StartsWith("area/", StringComparison.Ordinal))?.name,
-        IsBug = labels.Any(l => l.name == "t/bug"),
-        MilestoneName = resolvedMilestoneName,
+        MilestoneName = csvIssueRow.Values[milestoneNameColumnIndex],
+        IsOpen = bool.Parse(csvIssueRow.Values[isOpenColumnIndex]),
+        PrimaryArea = csvIssueRow.Values[primaryAreaColumnIndex],
+        IsBug = bool.Parse(csvIssueRow.Values[isBugColumnIndex]),
     };
 
     strongIssueRows.Add(strongIssueRow);
 }
+
+
+var mauiGAMilestones =
+    strongIssueRows
+        .Select(i => i.MilestoneName)
+        .Distinct()
+        .Where(m => m.StartsWith("6.0", StringComparison.OrdinalIgnoreCase) && !m.Contains("servicing", StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+var mauiFutureMilestones = new List<string> { ".NET 7", "Future" };
 
 
 // PART 1: Get open/closed count for each week
@@ -95,26 +79,26 @@ var openClosedTable = new DataTableBuilder().FromEnumerable(openClosedByWeek);
 openClosedTable.SaveCSV(@"C:\Users\elipton\Downloads\maui-issues-all-openclosed-by-week.csv");
 
 
-// PART 2: Calculate how much work is GA/Future/Untriaged/Unknown
+// PART 2: Calculate how many BUGS are in GA/Future/Untriaged/Unknown
 
-var openIssues = strongIssueRows.Where(i => i.ClosedAt == null).ToList();
+var openBugs = strongIssueRows.Where(i => i.IsOpen && i.IsBug).ToList();
 
-var gaIssueCount = openIssues.Count(i => mauiGAMilestones.Contains(i.MilestoneName, StringComparer.OrdinalIgnoreCase));
-var futureIssueCount = openIssues.Count(i => mauiFutureMilestones.Contains(i.MilestoneName, StringComparer.OrdinalIgnoreCase));
-var untriagedIssueCount = openIssues.Count(i => string.IsNullOrEmpty(i.MilestoneName));
-var unknownIssueCount = openIssues.Count - gaIssueCount - futureIssueCount - untriagedIssueCount;
+var gaIssueCount = openBugs.Count(i => mauiGAMilestones.Contains(i.MilestoneName, StringComparer.OrdinalIgnoreCase));
+var futureIssueCount = openBugs.Count(i => mauiFutureMilestones.Contains(i.MilestoneName, StringComparer.OrdinalIgnoreCase));
+var untriagedIssueCount = openBugs.Count(i => string.IsNullOrEmpty(i.MilestoneName));
+var unknownIssueCount = openBugs.Count - gaIssueCount - futureIssueCount - untriagedIssueCount;
 
 Console.WriteLine($"Total issues: {strongIssueRows.Count}");
-Console.WriteLine($"Open issues: {openIssues.Count}");
+Console.WriteLine($"Open issues: {openBugs.Count}");
 Console.WriteLine($"GA issues: {gaIssueCount}");
 Console.WriteLine($"Future issues: {futureIssueCount}");
 Console.WriteLine($"Untriaged issues: {untriagedIssueCount}");
 Console.WriteLine($"Unknown issues: {unknownIssueCount}");
 
 
-// PART 3: Breakdown issues per area in GA milestones and untriaged/unknown
+// PART 3: Breakdown BUG issues per area in GA milestones and untriaged/unknown
 
-var openIssuesGroupedByArea = openIssues.GroupBy(i => i.PrimaryArea).ToList();
+var openIssuesGroupedByArea = openBugs.GroupBy(i => i.PrimaryArea).ToList();
 
 var issuesByAreaToTriage = new List<AreaTriageSummary>();
 
