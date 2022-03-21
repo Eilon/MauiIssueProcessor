@@ -110,6 +110,30 @@ Console.WriteLine($"GA issues: {gaIssueCount}");
 Console.WriteLine($"Future issues: {futureIssueCount}");
 Console.WriteLine($"Untriaged issues: {untriagedIssueCount}");
 Console.WriteLine($"Unknown issues: {unknownIssueCount}");
+
+
+// PART 3: Breakdown issues per area in GA milestones and untriaged/unknown
+
+var openIssuesGroupedByArea = openIssues.GroupBy(i => i.PrimaryArea).ToList();
+
+var issuesByAreaToTriage = new List<AreaTriageSummary>();
+
+for (int i = 0; i < openIssuesGroupedByArea.Count; i++)
+{
+    var areaGroup = openIssuesGroupedByArea[i];
+
+    issuesByAreaToTriage.Add(
+        new AreaTriageSummary
+        {
+            Area = areaGroup.Key,
+            IssuesForGA = areaGroup.Count(i => mauiGAMilestones.Contains(i.MilestoneName, StringComparer.OrdinalIgnoreCase)),
+            IssuesUntriaged = areaGroup.Count(i => string.IsNullOrEmpty(i.MilestoneName)),
+        });
+}
+
+var issuesByAreaToTriageTable = new DataTableBuilder().FromEnumerable(issuesByAreaToTriage);
+issuesByAreaToTriageTable.SaveCSV(@"C:\Users\elipton\Downloads\maui-issues-all-area-triage.csv");
+
 Console.WriteLine("Done");
 
 
@@ -123,6 +147,13 @@ class OpenClosedItem
     public DateTime Week { get; set; }
     public int IssuesOpened { get; set; }
     public int IssuesClosed { get; set; }
+}
+
+class AreaTriageSummary
+{
+    public string Area { get; set; }
+    public int IssuesForGA { get; set; }
+    public int IssuesUntriaged { get; set; }
 }
 
 class IssueRow
