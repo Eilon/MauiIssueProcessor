@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+	<UserSecretsId>MauiIssueProcessor.App</UserSecretsId>
+  </PropertyGroup>
+
+	<PropertyGroup>
+		<OctokitVersion>0.48.0</OctokitVersion>
+		<OctokitGraphQLVersion>0.1.7-beta</OctokitGraphQLVersion>
+		<MicrosoftExtensionsVersion>5.0.0</MicrosoftExtensionsVersion>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Octokit" Version="$(OctokitVersion)" />
+		<PackageReference Include="Octokit.GraphQL" Version="$(OctokitGraphQLVersion)" />
+		<PackageReference Include="GraphQL.Client" Version="3.1.2" />
+		<PackageReference Include="GraphQL.Client.Serializer.Newtonsoft" Version="3.1.2" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="$(MicrosoftExtensionsVersion)" />
+	</ItemGroup>
+</Project>
