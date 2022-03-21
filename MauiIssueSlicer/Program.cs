@@ -52,9 +52,9 @@ var mauiFutureMilestones = new List<string> { ".NET 7", "Future" };
 
 // PART 1: Get open/closed count for each week
 
-var startDate = new DateTimeOffset(2022, 1, 1, 0, 0, 0, TimeSpan.Zero);
-//startDate = strongIssueRows.Min(x => x.CreatedAt).Date;
-startDate = new DateTimeOffset(2021, 6, 1, 0, 0, 0, TimeSpan.Zero);
+//var startDate = new DateTimeOffset(2022, 1, 1, 0, 0, 0, TimeSpan.Zero);
+var startDate = new DateTimeOffset(2021, 6, 1, 0, 0, 0, TimeSpan.Zero);
+//var startDate = strongIssueRows.Min(x => x.CreatedAt).Date; // Start at oldest issue
 
 
 var daysSinceStartDate = DateTimeOffset.Now - startDate;
@@ -89,11 +89,11 @@ var untriagedIssueCount = openBugs.Count(i => string.IsNullOrEmpty(i.MilestoneNa
 var unknownIssueCount = openBugs.Count - gaIssueCount - futureIssueCount - untriagedIssueCount;
 
 Console.WriteLine($"Total issues: {strongIssueRows.Count}");
-Console.WriteLine($"Open issues: {openBugs.Count}");
-Console.WriteLine($"GA issues: {gaIssueCount}");
-Console.WriteLine($"Future issues: {futureIssueCount}");
-Console.WriteLine($"Untriaged issues: {untriagedIssueCount}");
-Console.WriteLine($"Unknown issues: {unknownIssueCount}");
+Console.WriteLine($"Open BUG issues: {openBugs.Count}");
+Console.WriteLine($"GA BUG issues: {gaIssueCount}");
+Console.WriteLine($"Future BUG issues: {futureIssueCount}");
+Console.WriteLine($"Untriaged BUG issues: {untriagedIssueCount}");
+Console.WriteLine($"Unknown BUG issues: {unknownIssueCount}");
 
 
 // PART 3: Breakdown BUG issues per area in GA milestones and untriaged/unknown
