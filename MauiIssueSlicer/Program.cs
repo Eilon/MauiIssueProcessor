@@ -1,11 +1,16 @@
 ﻿using DataAccess;
-using Newtonsoft.Json;
 
-// See https://aka.ms/new-console-template for more information
-Console.WriteLine("Hello, World!");
+if (args.Length != 1)
+{
+    Console.WriteLine($"Usage: dotnet run MauiIssueSlicer c:\\path\\to\\issues.csv");
+    return 1;
+}
 
-var dataPath = @"C:\Users\elipton\Downloads\maui-issues-all-ql.csv";
-var csvTable = new DataTableBuilder().ReadCsv(dataPath);
+var inputDataPath = args[0];
+var csvTable = new DataTableBuilder().ReadCsv(inputDataPath);
+
+var outputRoot = Path.GetDirectoryName(Path.GetFullPath(inputDataPath));
+var inputFilenameBase = Path.GetFileNameWithoutExtension(inputDataPath);
 
 Console.WriteLine($"Loaded {csvTable.NumRows} rows of data");
 
@@ -76,7 +81,9 @@ for (int i = 0; i < weeks; i++)
 }
 
 var openClosedTable = new DataTableBuilder().FromEnumerable(openClosedByWeek);
-openClosedTable.SaveCSV(@"C:\Users\elipton\Downloads\maui-issues-all-openclosed-by-week.csv");
+var openClosedByWeekFilePath = Path.Combine(outputRoot, inputFilenameBase, "openclosed-by-week.csv");
+openClosedTable.SaveCSV(openClosedByWeekFilePath);
+Console.WriteLine($"Saved Open Closed By Week CSV to: {openClosedByWeekFilePath}");
 
 
 // PART 2: Calculate how many BUGS are in GA/Future/Untriaged/Unknown
@@ -98,7 +105,11 @@ Console.WriteLine($"Unknown BUG issues: {unknownIssueCount}");
 
 // PART 3: Breakdown BUG issues per area in GA milestones and untriaged/unknown
 
-var openIssuesGroupedByArea = openBugs.GroupBy(i => i.PrimaryArea).ToList();
+var openIssuesGroupedByArea =
+    openBugs
+        .GroupBy(i => i.PrimaryArea)
+        .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+        .ToList();
 
 var issuesByAreaToTriage = new List<AreaTriageSummary>();
 
@@ -116,9 +127,13 @@ for (int i = 0; i < openIssuesGroupedByArea.Count; i++)
 }
 
 var issuesByAreaToTriageTable = new DataTableBuilder().FromEnumerable(issuesByAreaToTriage);
-issuesByAreaToTriageTable.SaveCSV(@"C:\Users\elipton\Downloads\maui-issues-all-area-triage.csv");
+var areaTriageFilePath = Path.Combine(outputRoot, inputFilenameBase, "area-triage.csv");
+issuesByAreaToTriageTable.SaveCSV(areaTriageFilePath);
+Console.WriteLine($"Saved Area Triage CSV to: {areaTriageFilePath}");
 
 Console.WriteLine("Done");
+
+return 0;
 
 
 int GetColumnIndex(IEnumerable<(string First, int Second)> columnNamesByIndex, string columnName)

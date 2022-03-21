@@ -9,7 +9,6 @@
 
   <ItemGroup>
     <PackageReference Include="CsvTools" Version="1.0.12" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
   </ItemGroup>
 
 </Project>

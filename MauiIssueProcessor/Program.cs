@@ -1,9 +1,6 @@
-﻿// See https://aka.ms/new-console-template for more information
-using CreateMikLabelModel.DL;
+﻿using CreateMikLabelModel.DL;
 
-Console.WriteLine("Hello, World!");
-
-if (await DownloadHelper.DownloadItemsAsync("output.tsv", new[] { ("dotnet", "maui") }) == -1)
+if (await DownloadHelper.DownloadItemsAsync("dotnet", "maui") == -1)
 {
     return -1;
 }

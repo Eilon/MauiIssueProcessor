@@ -7,14 +7,7 @@ using CreateMikLabelModel.Models;
 using DataAccess;
 using GraphQL;
 using GraphQL.Client.Http;
-using GraphQL.Client.Serializer.Newtonsoft;
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
-using System.Linq;
 using System.Net;
-using System.Threading.Tasks;
 
 namespace CreateMikLabelModel.DL
 {
@@ -37,22 +30,19 @@ namespace CreateMikLabelModel.DL
         private const string DeletedUser = "ghost";
 
         public static async Task<bool> DownloadFastUsingGraphQLAsync(
-            List<IssueRow> outputLinesExcludingHeader,
-            (string owner, string repo)[] repoCombo,
-            StreamWriter outputWriter)
+            string owner, string repo)
         {
+            var outputLinesExcludingHeader = new List<IssueRow>();
+
             try
             {
-                foreach ((string owner, string repo) repo in repoCombo)
+                using (var client = CommonHelper.CreateGraphQLClient())
                 {
-                    using (var client = CommonHelper.CreateGraphQLClient())
+                    Console.WriteLine($"Downloading Issue records from {owner}/{repo}.");
+                    if (!await ProcessGitHubIssueData(
+                        client, owner, repo, outputLinesExcludingHeader, GetGitHubIssuePage<IssuesNode>))
                     {
-                        Console.WriteLine($"Downloading Issue records from {repo.owner}/{repo.repo}.");
-                        if (!await ProcessGitHubIssueData(
-                            client, repo.owner, repo.repo, outputLinesExcludingHeader, GetGitHubIssuePage<IssuesNode>))
-                        {
-                            return false;
-                        }
+                        return false;
                     }
                 }
                 return true;
@@ -68,7 +58,9 @@ namespace CreateMikLabelModel.DL
                     .OrderBy(x => x.Number);
 
                 var openClosedTable = new DataTableBuilder().FromEnumerable(ordered);
-                openClosedTable.SaveCSV(@"C:\Users\elipton\Downloads\maui-issues-all-ql.csv");
+                var outputFileName = Path.GetFullPath($"{owner}-{repo}-issues.csv");
+                openClosedTable.SaveCSV(outputFileName);
+                Console.WriteLine($"Saved CSV to: {outputFileName}");
             }
         }
 
@@ -96,9 +88,7 @@ namespace CreateMikLabelModel.DL
                     var issues = issuePage.Issues.Repository.Issues.Nodes.ToList();
 
                     totalProcessed += issues.Count;
-                    Console.WriteLine(
-                        $"Processing {totalProcessed}/{issuePage.Issues.Repository.Issues.TotalCount}. " +
-                        $"Writing {issues.Count} items of interest to output TSV file...");
+                    Console.WriteLine($"Processing {totalProcessed}/{issuePage.Issues.Repository.Issues.TotalCount}.");
 
                     foreach (var issue in issues)
                     {
