@@ -27,6 +27,8 @@ var milestoneMapping = new Dictionary<string, string>()
 //{ "", "6.0.300-servicing" },
 //{ "", "6.0.100-preview.6" },
 
+var mauiGAMilestones = milestoneMapping.Values.Where(m => m.StartsWith("6.0", StringComparison.OrdinalIgnoreCase) && !m.Contains("servicing", StringComparison.OrdinalIgnoreCase)).ToList();
+var mauiFutureMilestones = new List<string> { ".NET 7", "Future" };
 
 Console.WriteLine($"Loaded {csvTable.NumRows} rows of data");
 
@@ -63,8 +65,13 @@ foreach (var csvIssueRow in csvTable.Rows)
     strongIssueRows.Add(strongIssueRow);
 }
 
+
+// PART 1: Get open/closed count for each week
+
 var startDate = new DateTimeOffset(2022, 1, 1, 0, 0, 0, TimeSpan.Zero);
-startDate = strongIssueRows.Min(x => x.CreatedAt).Date;
+//startDate = strongIssueRows.Min(x => x.CreatedAt).Date;
+startDate = new DateTimeOffset(2021, 6, 1, 0, 0, 0, TimeSpan.Zero);
+
 
 var daysSinceStartDate = DateTimeOffset.Now - startDate;
 var weeks = (int)Math.Ceiling(daysSinceStartDate.TotalDays / 7d);
@@ -88,6 +95,21 @@ var openClosedTable = new DataTableBuilder().FromEnumerable(openClosedByWeek);
 openClosedTable.SaveCSV(@"C:\Users\elipton\Downloads\maui-issues-all-openclosed-by-week.csv");
 
 
+// PART 2: Calculate how much work is GA/Future/Untriaged/Unknown
+
+var openIssues = strongIssueRows.Where(i => i.ClosedAt == null).ToList();
+
+var gaIssueCount = openIssues.Count(i => mauiGAMilestones.Contains(i.MilestoneName, StringComparer.OrdinalIgnoreCase));
+var futureIssueCount = openIssues.Count(i => mauiFutureMilestones.Contains(i.MilestoneName, StringComparer.OrdinalIgnoreCase));
+var untriagedIssueCount = openIssues.Count(i => string.IsNullOrEmpty(i.MilestoneName));
+var unknownIssueCount = openIssues.Count - gaIssueCount - futureIssueCount - untriagedIssueCount;
+
+Console.WriteLine($"Total issues: {strongIssueRows.Count}");
+Console.WriteLine($"Open issues: {openIssues.Count}");
+Console.WriteLine($"GA issues: {gaIssueCount}");
+Console.WriteLine($"Future issues: {futureIssueCount}");
+Console.WriteLine($"Untriaged issues: {untriagedIssueCount}");
+Console.WriteLine($"Unknown issues: {unknownIssueCount}");
 Console.WriteLine("Done");
 
 
