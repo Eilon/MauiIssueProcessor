@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
 	<UserSecretsId>MauiIssueProcessor.App</UserSecretsId>
+	<NoWarn>$(NoWarn);NU1701</NoWarn>
   </PropertyGroup>
 
 	<PropertyGroup>
@@ -16,10 +17,10 @@
 
 	<ItemGroup>
 		<PackageReference Include="CsvTools" Version="1.0.12" />
-		<PackageReference Include="Octokit" Version="$(OctokitVersion)" />
+		<PackageReference Include="Octokit" Version="0.50.0" />
 		<PackageReference Include="Octokit.GraphQL" Version="$(OctokitGraphQLVersion)" />
-		<PackageReference Include="GraphQL.Client" Version="3.1.2" />
-		<PackageReference Include="GraphQL.Client.Serializer.Newtonsoft" Version="3.1.2" />
-		<PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="$(MicrosoftExtensionsVersion)" />
+		<PackageReference Include="GraphQL.Client" Version="4.0.2" />
+		<PackageReference Include="GraphQL.Client.Serializer.Newtonsoft" Version="4.0.2" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="6.0.1" />
 	</ItemGroup>
 </Project>

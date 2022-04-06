@@ -1,4 +1,6 @@
 ﻿using DataAccess;
+using Microsoft.Office.Interop.Excel;
+using System.Globalization;
 
 if (args.Length != 1)
 {
@@ -80,11 +82,6 @@ for (int i = 0; i < weeks; i++)
     openClosedByWeek.Add(new OpenClosedItem { Week = fromDate, IssuesOpened = issuesOpenedInRange, IssuesClosed = issuesClosedInRange });
 }
 
-var openClosedTable = new DataTableBuilder().FromEnumerable(openClosedByWeek);
-var openClosedByWeekFilePath = Path.Combine(outputRoot, inputFilenameBase, "openclosed-by-week.csv");
-openClosedTable.SaveCSV(openClosedByWeekFilePath);
-Console.WriteLine($"Saved Open Closed By Week CSV to: {openClosedByWeekFilePath}");
-
 
 // PART 2: Calculate how many BUGS are in GA/Future/Untriaged/Unknown
 
@@ -108,7 +105,6 @@ Console.WriteLine($"Unknown BUG issues: {unknownIssueCount}");
 var openIssuesGroupedByArea =
     openBugs
         .GroupBy(i => i.PrimaryArea)
-        .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
         .ToList();
 
 var issuesByAreaToTriage = new List<AreaTriageSummary>();
@@ -126,15 +122,142 @@ for (int i = 0; i < openIssuesGroupedByArea.Count; i++)
         });
 }
 
-var issuesByAreaToTriageTable = new DataTableBuilder().FromEnumerable(issuesByAreaToTriage);
-var areaTriageFilePath = Path.Combine(outputRoot, inputFilenameBase, "area-triage.csv");
-issuesByAreaToTriageTable.SaveCSV(areaTriageFilePath);
-Console.WriteLine($"Saved Area Triage CSV to: {areaTriageFilePath}");
+issuesByAreaToTriage = issuesByAreaToTriage
+    .OrderByDescending(a => a.IssuesUntriaged)
+    .ThenBy(a => a.Area)
+    .ToList();
+
+if (issuesByAreaToTriage.SingleOrDefault(a => string.IsNullOrEmpty(a.Area)) is { } and var emptyArea)
+{
+    emptyArea.Area = "(no area)";
+}
+
+
+// GENERATE EXCEL OUTPUT
+
+Console.WriteLine("Starting Excel...");
+var excelApp = new Microsoft.Office.Interop.Excel.Application();
+try
+{
+    Console.WriteLine("Creating Excel workbook...");
+    var excelWorkbook = excelApp.Workbooks.Add();
+
+    Console.WriteLine("Creating Excel worksheet for opened/closed...");
+    Worksheet openedClosedWorksheet = excelWorkbook.Sheets.Add();
+    openedClosedWorksheet.Name = "OpenedClosedByWeek";
+    openedClosedWorksheet.Cells[1, 1].Value = "WeekStart";
+    openedClosedWorksheet.Cells[1, 2].Value = "Opened";
+    openedClosedWorksheet.Cells[1, 3].Value = "Closed";
+    SetHeaderStyle(openedClosedWorksheet.Cells[1, 1]);
+    SetHeaderStyle(openedClosedWorksheet.Cells[1, 2]);
+    SetHeaderStyle(openedClosedWorksheet.Cells[1, 3]);
+
+    for (int i = 0; i < openClosedByWeek.Count; i++)
+    {
+        openedClosedWorksheet.Cells[i + 2, 1].Value = openClosedByWeek[i].Week.ToShortDateString();
+        openedClosedWorksheet.Cells[i + 2, 2].Value = openClosedByWeek[i].IssuesOpened.ToString(CultureInfo.InvariantCulture);
+        openedClosedWorksheet.Cells[i + 2, 3].Value = openClosedByWeek[i].IssuesClosed.ToString(CultureInfo.InvariantCulture);
+    }
+
+    openedClosedWorksheet.Columns["A:A"].ColumnWidth = 20;
+    openedClosedWorksheet.Columns["B:B"].ColumnWidth = 10;
+    openedClosedWorksheet.Columns["C:C"].ColumnWidth = 10;
+
+    var openClosedChartSourceRange = openedClosedWorksheet.Range[Cell1: "A1", Cell2: "C" + (openClosedByWeek.Count() + 1).ToString(CultureInfo.InvariantCulture)];
+
+    ChartObject openedClosedChartObject = openedClosedWorksheet.ChartObjects().Add(300, 40, 800, 400);
+    var openedClosedChart = openedClosedChartObject.Chart;
+    openedClosedChart.ChartType = XlChartType.xlLineMarkers;
+    openedClosedChart.HasTitle = true;
+    openedClosedChart.ChartTitle.Text = "Issues Opened and Closed By Week";
+    
+    var allOpenedClosedSeries = openedClosedChart.SeriesCollection();
+    allOpenedClosedSeries.Add(openClosedChartSourceRange);
+
+    Series openedSeries = allOpenedClosedSeries[1];
+    openedSeries.Format.Line.BackColor.RGB = 0xED_7D_31; // blue-ish
+    openedSeries.Format.Line.Weight = 2f;
+
+    Trendlines openedSeriesTrendlines = openedSeries.Trendlines();
+    var openedLinearTrendline = openedSeriesTrendlines.Add(XlTrendlineType.xlLinear);
+    openedLinearTrendline.Format.Line.ForeColor.RGB = 0xED_7D_31; // blue-ish
+    openedLinearTrendline.Format.Line.Weight = 3f;
+    openedLinearTrendline.Format.Line.DashStyle = Microsoft.Office.Core.MsoLineDashStyle.msoLineDash;
+
+    Series closedSeries = allOpenedClosedSeries[2];
+    closedSeries.Format.Line.BackColor.RGB = 0x44_72_C4; // orange-ish
+    closedSeries.Format.Line.Weight = 2f;
+
+
+
+    Console.WriteLine("Creating Excel worksheet for area triage...");
+    Worksheet areaTriageWorksheet = excelWorkbook.Sheets.Add(After: openedClosedWorksheet);
+    areaTriageWorksheet.Name = "AreaTriage";
+    areaTriageWorksheet.Cells[1, 1].Value = "Area";
+    areaTriageWorksheet.Cells[1, 2].Value = "IssuesForGA";
+    areaTriageWorksheet.Cells[1, 3].Value = "Untriaged";
+    SetHeaderStyle(areaTriageWorksheet.Cells[1, 1]);
+    SetHeaderStyle(areaTriageWorksheet.Cells[1, 2]);
+    SetHeaderStyle(areaTriageWorksheet.Cells[1, 3]);
+
+    for (int i = 0; i < issuesByAreaToTriage.Count; i++)
+    {
+        areaTriageWorksheet.Cells[i + 2, 1].Value = issuesByAreaToTriage[i].Area;
+        areaTriageWorksheet.Cells[i + 2, 2].Value = issuesByAreaToTriage[i].IssuesForGA.ToString(CultureInfo.InvariantCulture);
+        areaTriageWorksheet.Cells[i + 2, 3].Value = issuesByAreaToTriage[i].IssuesUntriaged.ToString(CultureInfo.InvariantCulture);
+
+        if (issuesByAreaToTriage[i].IssuesUntriaged > 5)
+        {
+            areaTriageWorksheet.Cells[i + 2, 3].Interior.Color = 0x00_00_ff; // BGR: red
+        }
+        else if (issuesByAreaToTriage[i].IssuesUntriaged > 0)
+        {
+            areaTriageWorksheet.Cells[i + 2, 3].Interior.Color = 0x00_ff_ff; // BGR: yellow
+        }
+    }
+
+    areaTriageWorksheet.Columns["A:A"].ColumnWidth = 30;
+    areaTriageWorksheet.Columns["B:B"].ColumnWidth = 20;
+    areaTriageWorksheet.Columns["C:C"].ColumnWidth = 20;
+
+    for (int i = 2; i < excelWorkbook.Sheets.Count + 1; i++)
+    {
+        excelWorkbook.Sheets.Item[i].Delete();
+    }
+
+
+    openedClosedWorksheet.Activate();
+
+    var excelOutput = Path.Combine(outputRoot!, inputFilenameBase, "triage-summary.xlsx");
+    if (File.Exists(excelOutput))
+    {
+        File.Delete(excelOutput);
+    }
+    Directory.CreateDirectory(Path.GetDirectoryName(excelOutput)!);
+    Console.WriteLine($"Saving Excel file to: {excelOutput}");
+    excelWorkbook.SaveAs2(Filename: excelOutput);
+    excelWorkbook.Close();
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"ERROR: Exception during Excel file creation!");
+    Console.WriteLine(ex.ToString());
+}
+finally
+{
+    Console.WriteLine("Shutting down Excel...");
+    excelApp.Quit();
+}
 
 Console.WriteLine("Done");
 
 return 0;
 
+
+void SetHeaderStyle(Microsoft.Office.Interop.Excel.Range headerCell)
+{
+    headerCell.Font.Bold = true;
+}
 
 int GetColumnIndex(IEnumerable<(string First, int Second)> columnNamesByIndex, string columnName)
 {
@@ -150,13 +273,14 @@ class OpenClosedItem
 
 class AreaTriageSummary
 {
-    public string Area { get; set; }
+    public string? Area { get; set; }
     public int IssuesForGA { get; set; }
     public int IssuesUntriaged { get; set; }
 }
 
 class IssueRow
 {
+#pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
     public long Number;
     public string Title;
     public DateTimeOffset CreatedAt;
@@ -165,10 +289,13 @@ class IssueRow
     public bool IsOpen;
     public string PrimaryArea;
     public bool IsBug;
+#pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
 }
 
 class GitHubLabel
 {
+#pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
+#pragma warning disable CS0649 // Field is never assigned to
     public long id;
     public string node_id;
     public string url;
@@ -176,4 +303,6 @@ class GitHubLabel
     public string color;
     public string @default;
     public string description;
+#pragma warning restore CS0649 // Field is never assigned to
+#pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
 }
