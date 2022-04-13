@@ -4,10 +4,11 @@
 
 using CreateMikLabelModel.DL.Common;
 using CreateMikLabelModel.Models;
-using DataAccess;
 using GraphQL;
 using GraphQL.Client.Http;
+using System.Globalization;
 using System.Net;
+using System.Text;
 
 namespace CreateMikLabelModel.DL
 {
@@ -54,14 +55,40 @@ namespace CreateMikLabelModel.DL
             }
             finally
             {
-                var ordered = outputLinesExcludingHeader
+                var orderedIssueRows = outputLinesExcludingHeader
                     .OrderBy(x => x.Number);
 
-                var openClosedTable = new DataTableBuilder().FromEnumerable(ordered);
                 var outputFileName = Path.GetFullPath($"{owner}-{repo}-issues.csv");
-                openClosedTable.SaveCSV(outputFileName);
+                if (File.Exists(outputFileName))
+                {
+                    File.Delete(outputFileName);
+                }
+                using var outputWriter = new StreamWriter(outputFileName, append: false, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true)); // The UTF8 Identifier (BOM) is required so that emojis will be encoded properly
+
+                var issueRowProps = typeof(IssueRow).GetProperties();
+                WriteCsvRow(outputWriter, issueRowProps.Select(p => p.Name).ToArray());
+
+                foreach (var issueRow in orderedIssueRows)
+                {
+                    WriteCsvRow(outputWriter, issueRowProps.Select(p => Convert.ToString(p.GetValue(issueRow), CultureInfo.InvariantCulture)).ToArray());
+                }
                 Console.WriteLine($"Saved CSV to: {outputFileName}");
             }
+        }
+
+        private static void WriteCsvRow(StreamWriter streamWriter, string[] columns)
+        {
+            streamWriter.WriteLine(
+                string.Join(",",
+                    columns
+                        .Select(c =>
+                            "\"" +
+                            c
+                                .Replace("\r", "")
+                                .Replace("\n", "")
+                                .Replace("\"", "'") +
+                            "\"")
+                        .ToArray()));
         }
 
         public static async Task<bool> ProcessGitHubIssueData<T>(
@@ -128,14 +155,6 @@ namespace CreateMikLabelModel.DL
         private static void WriteCsvIssue(List<IssueRow> outputLines, IssuesNode issue)
         {
             var area = issue.Labels.Nodes.FirstOrDefault(l => LabelHelper.IsAreaLabel(l.Name))?.Name;
-            if (!string.IsNullOrEmpty(area))
-            {
-                var indexOfSpace = area.IndexOf(' ');
-                if (indexOfSpace != -1)
-                {
-                    area = area.Substring(0, indexOfSpace);
-                }
-            }
 
             outputLines.Add(
                 new IssueRow

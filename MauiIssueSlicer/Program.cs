@@ -1,5 +1,4 @@
-﻿using DataAccess;
-using Microsoft.Office.Interop.Excel;
+﻿using Microsoft.Office.Interop.Excel;
 using System.Globalization;
 
 if (args.Length != 1)
@@ -9,14 +8,15 @@ if (args.Length != 1)
 }
 
 var inputDataPath = args[0];
-var csvTable = new DataTableBuilder().ReadCsv(inputDataPath);
+var csvRows = File.ReadAllLines(inputDataPath);
 
 var outputRoot = Path.GetDirectoryName(Path.GetFullPath(inputDataPath));
 var inputFilenameBase = Path.GetFileNameWithoutExtension(inputDataPath);
 
-Console.WriteLine($"Loaded {csvTable.NumRows} rows of data");
+Console.WriteLine($"Loaded {csvRows.Length - 1} rows of data");
 
-var columnNamesByIndex = csvTable.ColumnNames.Zip(Enumerable.Range(0, csvTable.ColumnNames.Count()));
+var columnNames = ParseCsvRow(csvRows[0]);
+var columnNamesByIndex = columnNames.Zip(Enumerable.Range(0, columnNames.Length));
 
 var numberColumnIndex = GetColumnIndex(columnNamesByIndex, "Number");
 var titleColumnIndex = GetColumnIndex(columnNamesByIndex, "Title");
@@ -29,18 +29,20 @@ var isBugColumnIndex = GetColumnIndex(columnNamesByIndex, "IsBug");
 
 var strongIssueRows = new List<IssueRow>();
 
-foreach (var csvIssueRow in csvTable.Rows)
+foreach (var csvIssueRowText in csvRows.Skip(1)) // skip the header row
 {
+    var csvIssueRow = ParseCsvRow(csvIssueRowText);
+
     var strongIssueRow = new IssueRow()
     {
-        Number = Int32.Parse(csvIssueRow.Values[numberColumnIndex]),
-        Title = csvIssueRow.Values[titleColumnIndex],
-        CreatedAt = DateTimeOffset.Parse(csvIssueRow.Values[createdAtColumnIndex]),
-        ClosedAt = csvIssueRow.Values[closedAtColumnIndex].Length > 0 ? DateTimeOffset.Parse(csvIssueRow.Values[closedAtColumnIndex]) : null,
-        MilestoneName = csvIssueRow.Values[milestoneNameColumnIndex],
-        IsOpen = bool.Parse(csvIssueRow.Values[isOpenColumnIndex]),
-        PrimaryArea = csvIssueRow.Values[primaryAreaColumnIndex],
-        IsBug = bool.Parse(csvIssueRow.Values[isBugColumnIndex]),
+        Number = Int32.Parse(csvIssueRow[numberColumnIndex]),
+        Title = csvIssueRow[titleColumnIndex],
+        CreatedAt = DateTimeOffset.Parse(csvIssueRow[createdAtColumnIndex]),
+        ClosedAt = csvIssueRow[closedAtColumnIndex].Length > 0 ? DateTimeOffset.Parse(csvIssueRow[closedAtColumnIndex]) : null,
+        MilestoneName = csvIssueRow[milestoneNameColumnIndex],
+        IsOpen = bool.Parse(csvIssueRow[isOpenColumnIndex]),
+        PrimaryArea = csvIssueRow[primaryAreaColumnIndex],
+        IsBug = bool.Parse(csvIssueRow[isBugColumnIndex]),
     };
 
     strongIssueRows.Add(strongIssueRow);
@@ -253,6 +255,40 @@ Console.WriteLine("Done");
 
 return 0;
 
+static string[] ParseCsvRow(string csvRow)
+{
+    var parts = new List<string?>();
+
+    var index = 0;
+
+    while (index < csvRow.Length)
+    {
+        if (csvRow[index] == ',')
+        {
+            parts.Add(null);
+        }
+        else if (csvRow[index] == '"')
+        {
+            var nextQuoteIndex = csvRow.IndexOf('"', index + 1);
+            parts.Add(csvRow.Substring(index + 1, nextQuoteIndex - index - 1));
+            index = nextQuoteIndex + 1; // skip the close quote
+        }
+        else
+        {
+            var nextCommaIndex = csvRow.IndexOf(',', index + 1);
+            if (nextCommaIndex == -1)
+            {
+                nextCommaIndex = csvRow.Length;
+            }
+            parts.Add(csvRow.Substring(index, nextCommaIndex - index));
+            index = nextCommaIndex;
+        }
+
+        index++; // skip the comma
+    }
+
+    return parts.ToArray()!;
+}
 
 void SetHeaderStyle(Microsoft.Office.Interop.Excel.Range headerCell)
 {

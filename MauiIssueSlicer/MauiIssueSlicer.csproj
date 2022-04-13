@@ -31,8 +31,4 @@
     </COMReference>
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="CsvTools" Version="1.0.12" />
-  </ItemGroup>
-
 </Project>
