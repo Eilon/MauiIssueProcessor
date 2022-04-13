@@ -198,15 +198,18 @@ try
     areaTriageWorksheet.Cells[1, 1].Value = "Area";
     areaTriageWorksheet.Cells[1, 2].Value = "IssuesForGA";
     areaTriageWorksheet.Cells[1, 3].Value = "Untriaged";
+    areaTriageWorksheet.Cells[1, 4].Value = "Untriaged link";
     SetHeaderStyle(areaTriageWorksheet.Cells[1, 1]);
     SetHeaderStyle(areaTriageWorksheet.Cells[1, 2]);
     SetHeaderStyle(areaTriageWorksheet.Cells[1, 3]);
+    SetHeaderStyle(areaTriageWorksheet.Cells[1, 4]);
 
     for (int i = 0; i < issuesByAreaToTriage.Count; i++)
     {
         areaTriageWorksheet.Cells[i + 2, 1].Value = issuesByAreaToTriage[i].Area;
         areaTriageWorksheet.Cells[i + 2, 2].Value = issuesByAreaToTriage[i].IssuesForGA.ToString(CultureInfo.InvariantCulture);
         areaTriageWorksheet.Cells[i + 2, 3].Value = issuesByAreaToTriage[i].IssuesUntriaged.ToString(CultureInfo.InvariantCulture);
+        areaTriageWorksheet.Cells[i + 2, 4].Formula = $"=HYPERLINK(\"https://github.com/dotnet/maui/issues?q=is%3Aopen+is%3Aissue+no:milestone+label:t/bug+label%3A%22{issuesByAreaToTriage[i].Area}%22\", \"GitHub query: {issuesByAreaToTriage[i].Area}\")";
 
         if (issuesByAreaToTriage[i].IssuesUntriaged > 5)
         {
@@ -219,9 +222,11 @@ try
     }
 
     areaTriageWorksheet.Columns["A:A"].ColumnWidth = 30;
-    areaTriageWorksheet.Columns["B:B"].ColumnWidth = 20;
-    areaTriageWorksheet.Columns["C:C"].ColumnWidth = 20;
+    areaTriageWorksheet.Columns["B:B"].ColumnWidth = 15;
+    areaTriageWorksheet.Columns["C:C"].ColumnWidth = 15;
+    areaTriageWorksheet.Columns["D:D"].ColumnWidth = 35;
 
+    // Delete generic "Sheet1", "Sheet2", etc. that get created in new workbooks (can't delete them early because then you get an error saying there has to be at least 1 active sheet)
     for (int i = 2; i < excelWorkbook.Sheets.Count + 1; i++)
     {
         excelWorkbook.Sheets.Item[i].Delete();
