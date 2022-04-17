@@ -1,4 +1,5 @@
 ﻿using Microsoft.Office.Interop.Excel;
+using NuGet.Versioning;
 using System.Globalization;
 
 if (args.Length != 1)
@@ -54,6 +55,7 @@ var mauiGAMilestones =
         .Select(i => i.MilestoneName)
         .Distinct()
         .Where(m => m.StartsWith("6.0", StringComparison.OrdinalIgnoreCase) && !m.Contains("servicing", StringComparison.OrdinalIgnoreCase))
+        .OrderBy(m => SemanticVersion.Parse(m), new VersionComparer())
         .ToList();
 
 var mauiFutureMilestones = new List<string> { ".NET 7", "Future" };
@@ -165,7 +167,7 @@ try
     openedClosedWorksheet.Columns["B:B"].ColumnWidth = 10;
     openedClosedWorksheet.Columns["C:C"].ColumnWidth = 10;
 
-    var openClosedChartSourceRange = openedClosedWorksheet.Range[Cell1: "A1", Cell2: "C" + (openClosedByWeek.Count() + 1).ToString(CultureInfo.InvariantCulture)];
+    var openClosedChartSourceRange = openedClosedWorksheet.Range[Cell1: "A1", Cell2: "C" + (openClosedByWeek.Count + 1).ToString(CultureInfo.InvariantCulture)];
 
     ChartObject openedClosedChartObject = openedClosedWorksheet.ChartObjects().Add(300, 40, 800, 400);
     var openedClosedChart = openedClosedChartObject.Chart;
@@ -198,33 +200,51 @@ try
     areaTriageWorksheet.Cells[1, 1].Value = "Area";
     areaTriageWorksheet.Cells[1, 2].Value = "IssuesForGA";
     areaTriageWorksheet.Cells[1, 3].Value = "Untriaged";
-    areaTriageWorksheet.Cells[1, 4].Value = "Untriaged link";
     SetHeaderStyle(areaTriageWorksheet.Cells[1, 1]);
     SetHeaderStyle(areaTriageWorksheet.Cells[1, 2]);
     SetHeaderStyle(areaTriageWorksheet.Cells[1, 3]);
-    SetHeaderStyle(areaTriageWorksheet.Cells[1, 4]);
+    var mauiGAMilestonesWithAtLeastOneIssue = mauiGAMilestones.Where(gaMilestone => openBugs.Any(b => b.MilestoneName == gaMilestone)).ToList();
+    for (var i = 0; i < mauiGAMilestonesWithAtLeastOneIssue.Count; i++)
+    {
+        areaTriageWorksheet.Cells[1, 4 + i].Value = mauiGAMilestonesWithAtLeastOneIssue[i];
+        SetHeaderStyle(areaTriageWorksheet.Cells[1, 4 + i]);
+        areaTriageWorksheet.Columns[$"{((char)('D' + i))}:{((char)('D' + i))}"].ColumnWidth = 20;
+    }
 
     for (int i = 0; i < issuesByAreaToTriage.Count; i++)
     {
         areaTriageWorksheet.Cells[i + 2, 1].Value = issuesByAreaToTriage[i].Area;
         areaTriageWorksheet.Cells[i + 2, 2].Value = issuesByAreaToTriage[i].IssuesForGA.ToString(CultureInfo.InvariantCulture);
-        areaTriageWorksheet.Cells[i + 2, 3].Value = issuesByAreaToTriage[i].IssuesUntriaged.ToString(CultureInfo.InvariantCulture);
-        areaTriageWorksheet.Cells[i + 2, 4].Formula = $"=HYPERLINK(\"https://github.com/dotnet/maui/issues?q=is%3Aopen+is%3Aissue+no:milestone+label:t/bug+label%3A%22{issuesByAreaToTriage[i].Area}%22\", \"GitHub query: {issuesByAreaToTriage[i].Area}\")";
+        areaTriageWorksheet.Cells[i + 2, 3].Formula = $"=HYPERLINK(\"https://github.com/dotnet/maui/issues?q=is%3Aopen+is%3Aissue+no:milestone+label:t/bug+label%3A%22{issuesByAreaToTriage[i].Area}%22\", \"{issuesByAreaToTriage[i].IssuesUntriaged.ToString(CultureInfo.InvariantCulture)}\")";
 
-        if (issuesByAreaToTriage[i].IssuesUntriaged > 5)
+        SetCellColorByValue(areaTriageWorksheet.Cells[i + 2, 3], issuesByAreaToTriage[i].IssuesUntriaged);
+
+        for (var milestoneIndex = 0; milestoneIndex < mauiGAMilestonesWithAtLeastOneIssue.Count; milestoneIndex++)
         {
-            areaTriageWorksheet.Cells[i + 2, 3].Interior.Color = 0x00_00_ff; // BGR: red
+            var milestoneName = mauiGAMilestonesWithAtLeastOneIssue[milestoneIndex];
+            var bugsInAreaInMilestone = openIssuesGroupedByArea.SingleOrDefault(a => string.Equals(a.Key, issuesByAreaToTriage[i].Area, StringComparison.OrdinalIgnoreCase))?.Count(b => string.Equals(b.MilestoneName, milestoneName, StringComparison.OrdinalIgnoreCase)) ?? 0;
+
+            areaTriageWorksheet.Cells[i + 2, 4 + milestoneIndex].Formula = $"=HYPERLINK(\"https://github.com/dotnet/maui/issues?q=is%3Aopen+is%3Aissue+milestone:{milestoneName}+label:t/bug+label%3A%22{issuesByAreaToTriage[i].Area}%22\", \"{bugsInAreaInMilestone.ToString(CultureInfo.InvariantCulture)}\")";
+
+            SetCellColorByValue(areaTriageWorksheet.Cells[i + 2, 4 + milestoneIndex], bugsInAreaInMilestone);
         }
-        else if (issuesByAreaToTriage[i].IssuesUntriaged > 0)
+    }
+
+    void SetCellColorByValue(Microsoft.Office.Interop.Excel.Range cell, int value)
+    {
+        if (value >= 10)
         {
-            areaTriageWorksheet.Cells[i + 2, 3].Interior.Color = 0x00_ff_ff; // BGR: yellow
+            cell.Interior.Color = 0x00_00_ff; // BGR: red
+        }
+        else if (value >= 1)
+        {
+            cell.Interior.Color = 0x00_ff_ff; // BGR: yellow
         }
     }
 
     areaTriageWorksheet.Columns["A:A"].ColumnWidth = 30;
     areaTriageWorksheet.Columns["B:B"].ColumnWidth = 15;
     areaTriageWorksheet.Columns["C:C"].ColumnWidth = 15;
-    areaTriageWorksheet.Columns["D:D"].ColumnWidth = 35;
 
     // Delete generic "Sheet1", "Sheet2", etc. that get created in new workbooks (can't delete them early because then you get an error saying there has to be at least 1 active sheet)
     for (int i = 2; i < excelWorkbook.Sheets.Count + 1; i++)

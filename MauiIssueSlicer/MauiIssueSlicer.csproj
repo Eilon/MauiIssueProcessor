@@ -31,4 +31,8 @@
     </COMReference>
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="NuGet.Versioning" Version="6.1.0" />
+  </ItemGroup>
+
 </Project>
