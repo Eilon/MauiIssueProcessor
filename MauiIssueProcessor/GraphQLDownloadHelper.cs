@@ -22,6 +22,7 @@ namespace CreateMikLabelModel.DL
         public bool IsOpen { get; set; }
         public string PrimaryArea { get; set; }
         public bool IsBug { get; set; }
+        public string Labels { get; set; }
     }
 
     class GraphQLDownloadHelper
@@ -166,6 +167,7 @@ namespace CreateMikLabelModel.DL
                     IsOpen = issue.ClosedAt == null,
                     PrimaryArea = area,
                     IsBug = issue.Labels.Nodes.Any(l => l.Name == "t/bug"),
+                    Labels = string.Join("|", issue.Labels.Nodes.Select(l => l.Name)),
                     MilestoneName = issue.Milestone?.Title,
                 });
         }

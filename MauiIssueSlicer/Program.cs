@@ -27,6 +27,7 @@ var milestoneNameColumnIndex = GetColumnIndex(columnNamesByIndex, "MilestoneName
 var isOpenColumnIndex = GetColumnIndex(columnNamesByIndex, "IsOpen");
 var primaryAreaColumnIndex = GetColumnIndex(columnNamesByIndex, "PrimaryArea");
 var isBugColumnIndex = GetColumnIndex(columnNamesByIndex, "IsBug");
+var labelsColumnIndex = GetColumnIndex(columnNamesByIndex, "Labels");
 
 var strongIssueRows = new List<IssueRow>();
 
@@ -44,22 +45,13 @@ foreach (var csvIssueRowText in csvRows.Skip(1)) // skip the header row
         IsOpen = bool.Parse(csvIssueRow[isOpenColumnIndex]),
         PrimaryArea = csvIssueRow[primaryAreaColumnIndex],
         IsBug = bool.Parse(csvIssueRow[isBugColumnIndex]),
+        Labels = csvIssueRow[labelsColumnIndex].Split('|'),
     };
 
     strongIssueRows.Add(strongIssueRow);
 }
 
-
-var mauiGAMilestones =
-    strongIssueRows
-        .Select(i => i.MilestoneName)
-        .Distinct()
-        .Where(m => m.StartsWith("6.0", StringComparison.OrdinalIgnoreCase) && !m.Contains("servicing", StringComparison.OrdinalIgnoreCase))
-        .OrderBy(m => SemanticVersion.Parse(m), new VersionComparer())
-        .ToList();
-
-var mauiFutureMilestones = new List<string> { ".NET 7", "Future" };
-
+var allMilestones = strongIssueRows.Select(i => i.MilestoneName).Distinct().ToList();
 
 // PART 1: Get open/closed count for each week
 
@@ -91,17 +83,11 @@ for (int i = 0; i < weeks; i++)
 
 var openBugs = strongIssueRows.Where(i => i.IsOpen && i.IsBug).ToList();
 
-var gaIssueCount = openBugs.Count(i => mauiGAMilestones.Contains(i.MilestoneName, StringComparer.OrdinalIgnoreCase));
-var futureIssueCount = openBugs.Count(i => mauiFutureMilestones.Contains(i.MilestoneName, StringComparer.OrdinalIgnoreCase));
 var untriagedIssueCount = openBugs.Count(i => string.IsNullOrEmpty(i.MilestoneName));
-var unknownIssueCount = openBugs.Count - gaIssueCount - futureIssueCount - untriagedIssueCount;
 
 Console.WriteLine($"Total issues: {strongIssueRows.Count}");
 Console.WriteLine($"Open BUG issues: {openBugs.Count}");
-Console.WriteLine($"GA BUG issues: {gaIssueCount}");
-Console.WriteLine($"Future BUG issues: {futureIssueCount}");
 Console.WriteLine($"Untriaged BUG issues: {untriagedIssueCount}");
-Console.WriteLine($"Unknown BUG issues: {unknownIssueCount}");
 
 
 // PART 3: Breakdown BUG issues per area in GA milestones and untriaged/unknown
@@ -121,7 +107,7 @@ for (int i = 0; i < openIssuesGroupedByArea.Count; i++)
         new AreaTriageSummary
         {
             Area = areaGroup.Key,
-            IssuesForGA = areaGroup.Count(i => mauiGAMilestones.Contains(i.MilestoneName, StringComparer.OrdinalIgnoreCase)),
+            //IssuesForGA = areaGroup.Count(i => mauiGAMilestones.Contains(i.MilestoneName, StringComparer.OrdinalIgnoreCase)),
             IssuesUntriaged = areaGroup.Count(i => string.IsNullOrEmpty(i.MilestoneName)),
         });
 }
@@ -203,10 +189,10 @@ try
     SetHeaderStyle(areaTriageWorksheet.Cells[1, 1]);
     SetHeaderStyle(areaTriageWorksheet.Cells[1, 2]);
     SetHeaderStyle(areaTriageWorksheet.Cells[1, 3]);
-    var mauiGAMilestonesWithAtLeastOneIssue = mauiGAMilestones.Where(gaMilestone => openBugs.Any(b => b.MilestoneName == gaMilestone)).ToList();
-    for (var i = 0; i < mauiGAMilestonesWithAtLeastOneIssue.Count; i++)
+    var mauiMilestonesWithAtLeastOneIssue = allMilestones.Where(m => openBugs.Any(b => b.MilestoneName == m)).OrderBy(m => m.ToLowerInvariant()).ToList();
+    for (var i = 0; i < mauiMilestonesWithAtLeastOneIssue.Count; i++)
     {
-        areaTriageWorksheet.Cells[1, 4 + i].Value = mauiGAMilestonesWithAtLeastOneIssue[i];
+        areaTriageWorksheet.Cells[1, 4 + i].Value = mauiMilestonesWithAtLeastOneIssue[i];
         SetHeaderStyle(areaTriageWorksheet.Cells[1, 4 + i]);
         areaTriageWorksheet.Columns[$"{((char)('D' + i))}:{((char)('D' + i))}"].ColumnWidth = 20;
     }
@@ -219,9 +205,9 @@ try
 
         SetCellColorByValue(areaTriageWorksheet.Cells[i + 2, 3], issuesByAreaToTriage[i].IssuesUntriaged);
 
-        for (var milestoneIndex = 0; milestoneIndex < mauiGAMilestonesWithAtLeastOneIssue.Count; milestoneIndex++)
+        for (var milestoneIndex = 0; milestoneIndex < mauiMilestonesWithAtLeastOneIssue.Count; milestoneIndex++)
         {
-            var milestoneName = mauiGAMilestonesWithAtLeastOneIssue[milestoneIndex];
+            var milestoneName = mauiMilestonesWithAtLeastOneIssue[milestoneIndex];
             var bugsInAreaInMilestone = openIssuesGroupedByArea.SingleOrDefault(a => string.Equals(a.Key, issuesByAreaToTriage[i].Area, StringComparison.OrdinalIgnoreCase))?.Count(b => string.Equals(b.MilestoneName, milestoneName, StringComparison.OrdinalIgnoreCase)) ?? 0;
 
             areaTriageWorksheet.Cells[i + 2, 4 + milestoneIndex].Formula = $"=HYPERLINK(\"https://github.com/dotnet/maui/issues?q=is%3Aopen+is%3Aissue+milestone:{milestoneName}+label:t/bug+label%3A%22{issuesByAreaToTriage[i].Area}%22\", \"{bugsInAreaInMilestone.ToString(CultureInfo.InvariantCulture)}\")";
@@ -245,6 +231,98 @@ try
     areaTriageWorksheet.Columns["A:A"].ColumnWidth = 30;
     areaTriageWorksheet.Columns["B:B"].ColumnWidth = 15;
     areaTriageWorksheet.Columns["C:C"].ColumnWidth = 15;
+
+
+    Console.WriteLine("Creating Excel worksheet for issues created by category...");
+    var categoryLabels = new[] { "t/bug", "t/enhancement ☀️", "proposal/open" };
+
+
+    var startDateForPerCategory = new DateTimeOffset(2022, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    
+
+    var daysSinceStartDatePerCategory = DateTimeOffset.Now - startDateForPerCategory;
+    var weeksForCategories = (int)Math.Ceiling(daysSinceStartDatePerCategory.TotalDays / 7d);
+
+
+    var issuesPerCategoryWeek = new List<(DateTime week, Dictionary<string, int> issuesPerCategory)>();
+
+    for (int i = 0; i < weeksForCategories; i++)
+    {
+        var fromDate = (startDateForPerCategory + i * weekSpan).Date;
+        var toDate = (fromDate + weekSpan).Date;
+
+        var issuesOpenedInRange = strongIssueRows.Where(i => i.CreatedAt.Date >= fromDate && i.CreatedAt.Date < toDate);
+
+        var issuesPerCategoryInThisWeek = new Dictionary<string, int>();
+        foreach (var issueCategoryLabel in categoryLabels)
+        {
+            issuesPerCategoryInThisWeek.Add(issueCategoryLabel, issuesOpenedInRange.Count(i => i.Labels.Any(l => string.Equals(l, issueCategoryLabel, StringComparison.OrdinalIgnoreCase))));
+        }
+
+        issuesPerCategoryInThisWeek.Add(
+            "(none)",
+            issuesOpenedInRange
+                .Count(i => i
+                    .Labels
+                    .All(l =>
+                        !categoryLabels.Contains(l, StringComparer.OrdinalIgnoreCase))));
+
+        issuesPerCategoryWeek.Add((week: fromDate, issuesPerCategory: issuesPerCategoryInThisWeek));
+    }
+
+
+
+
+
+    Worksheet createdByIssueCategory = excelWorkbook.Sheets.Add();
+    createdByIssueCategory.Name = "CreatedByIssueCategory";
+
+    createdByIssueCategory.Cells[1, 1].Value = "WeekStart";
+    SetHeaderStyle(createdByIssueCategory.Cells[1, 1]);
+    createdByIssueCategory.Columns["A:A"].ColumnWidth = 20;
+
+    var effectiveCategoryLabels = categoryLabels.Concat(new[] { "(none)" }).ToList();
+
+    for (int i = 0; i < effectiveCategoryLabels.Count; i++)
+    {
+        createdByIssueCategory.Cells[1, i + 2].Value = effectiveCategoryLabels[i];
+        SetHeaderStyle(createdByIssueCategory.Cells[1, i + 2]);
+        createdByIssueCategory.Columns[$"{((char)('B' + i))}:{((char)('B' + i))}"].ColumnWidth = 20;
+    }
+
+    for (int i = 0; i < issuesPerCategoryWeek.Count; i++)
+    {
+        createdByIssueCategory.Cells[2 + i, 1].Value = issuesPerCategoryWeek[i].week.ToShortDateString();
+
+        for (int j = 0; j < effectiveCategoryLabels.Count; j++)
+        {
+            createdByIssueCategory.Cells[2 + i, 2 + j].Value = issuesPerCategoryWeek[i].issuesPerCategory[effectiveCategoryLabels[j]].ToString(CultureInfo.InvariantCulture);
+        }
+    }
+
+    var createdByIssueCategoryChartSourceRange = createdByIssueCategory.Range[Cell1: "A1", Cell2: ((char)('A' + effectiveCategoryLabels.Count)) + (issuesPerCategoryWeek.Count + 1).ToString(CultureInfo.InvariantCulture)];
+
+    ChartObject createdByIssueCategoryChartObject = createdByIssueCategory.ChartObjects().Add(400, 40, 800, 400);
+    var createdByIssueCategoryChart = createdByIssueCategoryChartObject.Chart;
+    createdByIssueCategoryChart.ChartType = XlChartType.xlLineMarkers;
+    createdByIssueCategoryChart.HasTitle = true;
+    createdByIssueCategoryChart.ChartTitle.Text = "Issues Per Category Opened By Week";
+
+    var createdByIssueCategorySeries = createdByIssueCategoryChart.SeriesCollection();
+    createdByIssueCategorySeries.Add(createdByIssueCategoryChartSourceRange);
+
+    //Series openedSeries = allOpenedClosedSeries[1];
+    //openedSeries.Format.Line.BackColor.RGB = 0xED_7D_31; // blue-ish
+    //openedSeries.Format.Line.Weight = 2f;
+
+    //Series closedSeries = allOpenedClosedSeries[2];
+    //closedSeries.Format.Line.BackColor.RGB = 0x44_72_C4; // orange-ish
+    //closedSeries.Format.Line.Weight = 2f;
+
+
+
+
+
 
     // Delete generic "Sheet1", "Sheet2", etc. that get created in new workbooks (can't delete them early because then you get an error saying there has to be at least 1 active sheet)
     for (int i = 2; i < excelWorkbook.Sheets.Count + 1; i++)
@@ -350,20 +428,6 @@ class IssueRow
     public bool IsOpen;
     public string PrimaryArea;
     public bool IsBug;
-#pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
-}
-
-class GitHubLabel
-{
-#pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
-#pragma warning disable CS0649 // Field is never assigned to
-    public long id;
-    public string node_id;
-    public string url;
-    public string name;
-    public string color;
-    public string @default;
-    public string description;
-#pragma warning restore CS0649 // Field is never assigned to
+    public string[] Labels;
 #pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider declaring as nullable.
 }
