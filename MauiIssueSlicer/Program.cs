@@ -1,5 +1,5 @@
-﻿using Microsoft.Office.Interop.Excel;
-using NuGet.Versioning;
+﻿using MauiIssueSlicer;
+using Microsoft.Office.Interop.Excel;
 using System.Globalization;
 
 if (args.Length != 1)
@@ -135,12 +135,7 @@ try
     Console.WriteLine("Creating Excel worksheet for opened/closed...");
     Worksheet openedClosedWorksheet = excelWorkbook.Sheets.Add();
     openedClosedWorksheet.Name = "OpenedClosedByWeek";
-    openedClosedWorksheet.Cells[1, 1].Value = "WeekStart";
-    openedClosedWorksheet.Cells[1, 2].Value = "Opened";
-    openedClosedWorksheet.Cells[1, 3].Value = "Closed";
-    SetHeaderStyle(openedClosedWorksheet.Cells[1, 1]);
-    SetHeaderStyle(openedClosedWorksheet.Cells[1, 2]);
-    SetHeaderStyle(openedClosedWorksheet.Cells[1, 3]);
+    openedClosedWorksheet.AddHeaders(new[] { new ColumnInfo("WeekStart", 20), new ColumnInfo("Opened", 10), new ColumnInfo("Closed", 10) });
 
     for (int i = 0; i < openClosedByWeek.Count; i++)
     {
@@ -149,10 +144,6 @@ try
         openedClosedWorksheet.Cells[i + 2, 3].Value = openClosedByWeek[i].IssuesClosed.ToString(CultureInfo.InvariantCulture);
     }
 
-    openedClosedWorksheet.Columns["A:A"].ColumnWidth = 20;
-    openedClosedWorksheet.Columns["B:B"].ColumnWidth = 10;
-    openedClosedWorksheet.Columns["C:C"].ColumnWidth = 10;
-
     var openClosedChartSourceRange = openedClosedWorksheet.Range[Cell1: "A1", Cell2: "C" + (openClosedByWeek.Count + 1).ToString(CultureInfo.InvariantCulture)];
 
     ChartObject openedClosedChartObject = openedClosedWorksheet.ChartObjects().Add(300, 40, 800, 400);
@@ -160,7 +151,7 @@ try
     openedClosedChart.ChartType = XlChartType.xlLineMarkers;
     openedClosedChart.HasTitle = true;
     openedClosedChart.ChartTitle.Text = "Issues Opened and Closed By Week";
-    
+
     var allOpenedClosedSeries = openedClosedChart.SeriesCollection();
     allOpenedClosedSeries.Add(openClosedChartSourceRange);
 
@@ -183,36 +174,40 @@ try
     Console.WriteLine("Creating Excel worksheet for area triage...");
     Worksheet areaTriageWorksheet = excelWorkbook.Sheets.Add(After: openedClosedWorksheet);
     areaTriageWorksheet.Name = "AreaTriage";
-    areaTriageWorksheet.Cells[1, 1].Value = "Area";
-    areaTriageWorksheet.Cells[1, 2].Value = "IssuesForGA";
-    areaTriageWorksheet.Cells[1, 3].Value = "Untriaged";
-    SetHeaderStyle(areaTriageWorksheet.Cells[1, 1]);
-    SetHeaderStyle(areaTriageWorksheet.Cells[1, 2]);
-    SetHeaderStyle(areaTriageWorksheet.Cells[1, 3]);
-    var mauiMilestonesWithAtLeastOneIssue = allMilestones.Where(m => openBugs.Any(b => b.MilestoneName == m)).OrderBy(m => m.ToLowerInvariant()).ToList();
+
+    var areaTriageColumns = new List<ColumnInfo> {
+        new ColumnInfo("Area", 30),
+        new ColumnInfo("Untriaged", 15),
+    };
+
+    var mauiMilestonesWithAtLeastOneIssue =
+        allMilestones
+            .Where(m => !string.IsNullOrEmpty(m) && openBugs.Any(b => b.MilestoneName == m))
+            .OrderBy(m => m.ToLowerInvariant())
+            .ToList();
+
     for (var i = 0; i < mauiMilestonesWithAtLeastOneIssue.Count; i++)
     {
-        areaTriageWorksheet.Cells[1, 4 + i].Value = mauiMilestonesWithAtLeastOneIssue[i];
-        SetHeaderStyle(areaTriageWorksheet.Cells[1, 4 + i]);
-        areaTriageWorksheet.Columns[$"{((char)('D' + i))}:{((char)('D' + i))}"].ColumnWidth = 20;
+        areaTriageColumns.Add(new ColumnInfo(mauiMilestonesWithAtLeastOneIssue[i], 20));
     }
+
+    areaTriageWorksheet.AddHeaders(areaTriageColumns);
 
     for (int i = 0; i < issuesByAreaToTriage.Count; i++)
     {
         areaTriageWorksheet.Cells[i + 2, 1].Value = issuesByAreaToTriage[i].Area;
-        areaTriageWorksheet.Cells[i + 2, 2].Value = issuesByAreaToTriage[i].IssuesForGA.ToString(CultureInfo.InvariantCulture);
-        areaTriageWorksheet.Cells[i + 2, 3].Formula = $"=HYPERLINK(\"https://github.com/dotnet/maui/issues?q=is%3Aopen+is%3Aissue+no:milestone+label:t/bug+label%3A%22{issuesByAreaToTriage[i].Area}%22\", \"{issuesByAreaToTriage[i].IssuesUntriaged.ToString(CultureInfo.InvariantCulture)}\")";
+        areaTriageWorksheet.Cells[i + 2, 2].Formula = $"=HYPERLINK(\"https://github.com/dotnet/maui/issues?q=is%3Aopen+is%3Aissue+no:milestone+label:t/bug+label%3A%22{issuesByAreaToTriage[i].Area}%22\", \"{issuesByAreaToTriage[i].IssuesUntriaged.ToString(CultureInfo.InvariantCulture)}\")";
 
-        SetCellColorByValue(areaTriageWorksheet.Cells[i + 2, 3], issuesByAreaToTriage[i].IssuesUntriaged);
+        SetCellColorByValue(areaTriageWorksheet.Cells[i + 2, 2], issuesByAreaToTriage[i].IssuesUntriaged);
 
         for (var milestoneIndex = 0; milestoneIndex < mauiMilestonesWithAtLeastOneIssue.Count; milestoneIndex++)
         {
             var milestoneName = mauiMilestonesWithAtLeastOneIssue[milestoneIndex];
             var bugsInAreaInMilestone = openIssuesGroupedByArea.SingleOrDefault(a => string.Equals(a.Key, issuesByAreaToTriage[i].Area, StringComparison.OrdinalIgnoreCase))?.Count(b => string.Equals(b.MilestoneName, milestoneName, StringComparison.OrdinalIgnoreCase)) ?? 0;
 
-            areaTriageWorksheet.Cells[i + 2, 4 + milestoneIndex].Formula = $"=HYPERLINK(\"https://github.com/dotnet/maui/issues?q=is%3Aopen+is%3Aissue+milestone:{milestoneName}+label:t/bug+label%3A%22{issuesByAreaToTriage[i].Area}%22\", \"{bugsInAreaInMilestone.ToString(CultureInfo.InvariantCulture)}\")";
+            areaTriageWorksheet.Cells[i + 2, 3 + milestoneIndex].Formula = $"=HYPERLINK(\"https://github.com/dotnet/maui/issues?q=is%3Aopen+is%3Aissue+milestone%3A%22{milestoneName}%22+label:t/bug+label%3A%22{issuesByAreaToTriage[i].Area}%22\", \"{bugsInAreaInMilestone.ToString(CultureInfo.InvariantCulture)}\")";
 
-            SetCellColorByValue(areaTriageWorksheet.Cells[i + 2, 4 + milestoneIndex], bugsInAreaInMilestone);
+            SetCellColorByValue(areaTriageWorksheet.Cells[i + 2, 3 + milestoneIndex], bugsInAreaInMilestone);
         }
     }
 
@@ -228,17 +223,13 @@ try
         }
     }
 
-    areaTriageWorksheet.Columns["A:A"].ColumnWidth = 30;
-    areaTriageWorksheet.Columns["B:B"].ColumnWidth = 15;
-    areaTriageWorksheet.Columns["C:C"].ColumnWidth = 15;
-
 
     Console.WriteLine("Creating Excel worksheet for issues created by category...");
     var categoryLabels = new[] { "t/bug", "t/enhancement ☀️", "proposal/open" };
 
 
     var startDateForPerCategory = new DateTimeOffset(2022, 1, 1, 0, 0, 0, TimeSpan.Zero);
-    
+
 
     var daysSinceStartDatePerCategory = DateTimeOffset.Now - startDateForPerCategory;
     var weeksForCategories = (int)Math.Ceiling(daysSinceStartDatePerCategory.TotalDays / 7d);
@@ -272,23 +263,21 @@ try
 
 
 
-
-
-    Worksheet createdByIssueCategory = excelWorkbook.Sheets.Add();
+    Worksheet createdByIssueCategory = excelWorkbook.Sheets.Add(After: areaTriageWorksheet);
     createdByIssueCategory.Name = "CreatedByIssueCategory";
-
-    createdByIssueCategory.Cells[1, 1].Value = "WeekStart";
-    SetHeaderStyle(createdByIssueCategory.Cells[1, 1]);
-    createdByIssueCategory.Columns["A:A"].ColumnWidth = 20;
+    var createdByIssueCategoryColumns = new List<ColumnInfo> {
+        new ColumnInfo("WeekStart", 20),
+    };
 
     var effectiveCategoryLabels = categoryLabels.Concat(new[] { "(none)" }).ToList();
 
     for (int i = 0; i < effectiveCategoryLabels.Count; i++)
     {
-        createdByIssueCategory.Cells[1, i + 2].Value = effectiveCategoryLabels[i];
-        SetHeaderStyle(createdByIssueCategory.Cells[1, i + 2]);
-        createdByIssueCategory.Columns[$"{((char)('B' + i))}:{((char)('B' + i))}"].ColumnWidth = 20;
+        createdByIssueCategoryColumns.Add(new ColumnInfo(effectiveCategoryLabels[i], 20));
     }
+
+    createdByIssueCategory.AddHeaders(createdByIssueCategoryColumns);
+
 
     for (int i = 0; i < issuesPerCategoryWeek.Count; i++)
     {
@@ -391,11 +380,6 @@ static string[] ParseCsvRow(string csvRow)
     }
 
     return parts.ToArray()!;
-}
-
-void SetHeaderStyle(Microsoft.Office.Interop.Excel.Range headerCell)
-{
-    headerCell.Font.Bold = true;
 }
 
 int GetColumnIndex(IEnumerable<(string First, int Second)> columnNamesByIndex, string columnName)
