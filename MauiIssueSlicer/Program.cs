@@ -93,15 +93,20 @@ Console.WriteLine($"Untriaged BUG issues: {untriagedIssueCount}");
 // PART 3: Breakdown BUG issues per area in GA milestones and untriaged/unknown
 
 var openIssuesGroupedByArea =
+    strongIssueRows
+        .GroupBy(i => i.PrimaryArea)
+        .ToList();
+
+var openBugsGroupedByArea =
     openBugs
         .GroupBy(i => i.PrimaryArea)
         .ToList();
 
 var issuesByAreaToTriage = new List<AreaTriageSummary>();
 
-for (int i = 0; i < openIssuesGroupedByArea.Count; i++)
+for (int i = 0; i < openBugsGroupedByArea.Count; i++)
 {
-    var areaGroup = openIssuesGroupedByArea[i];
+    var areaGroup = openBugsGroupedByArea[i];
 
     issuesByAreaToTriage.Add(
         new AreaTriageSummary
@@ -191,6 +196,9 @@ try
         areaTriageColumns.Add(new ColumnInfo(mauiMilestonesWithAtLeastOneIssue[i], 20));
     }
 
+    var ancientMonthDelta = 4; // how many months old is an issue to be "ancient"
+    areaTriageColumns.Add(new ColumnInfo($"Ancient issues ({ancientMonthDelta.ToString(CultureInfo.InvariantCulture)} months and older)", 40));
+
     areaTriageWorksheet.AddHeaders(areaTriageColumns);
 
     for (int i = 0; i < issuesByAreaToTriage.Count; i++)
@@ -203,12 +211,23 @@ try
         for (var milestoneIndex = 0; milestoneIndex < mauiMilestonesWithAtLeastOneIssue.Count; milestoneIndex++)
         {
             var milestoneName = mauiMilestonesWithAtLeastOneIssue[milestoneIndex];
-            var bugsInAreaInMilestone = openIssuesGroupedByArea.SingleOrDefault(a => string.Equals(a.Key, issuesByAreaToTriage[i].Area, StringComparison.OrdinalIgnoreCase))?.Count(b => string.Equals(b.MilestoneName, milestoneName, StringComparison.OrdinalIgnoreCase)) ?? 0;
+            var bugsInAreaInMilestone = openBugsGroupedByArea.SingleOrDefault(a => string.Equals(a.Key, issuesByAreaToTriage[i].Area, StringComparison.OrdinalIgnoreCase))?.Count(b => string.Equals(b.MilestoneName, milestoneName, StringComparison.OrdinalIgnoreCase)) ?? 0;
 
             areaTriageWorksheet.Cells[i + 2, 3 + milestoneIndex].Formula = $"=HYPERLINK(\"https://github.com/dotnet/maui/issues?q=is%3Aopen+is%3Aissue+milestone%3A%22{milestoneName}%22+label:t/bug+label%3A%22{issuesByAreaToTriage[i].Area}%22\", \"{bugsInAreaInMilestone.ToString(CultureInfo.InvariantCulture)}\")";
 
             SetCellColorByValue(areaTriageWorksheet.Cells[i + 2, 3 + milestoneIndex], bugsInAreaInMilestone);
         }
+
+        var ancientIssuesLastDate = DateTimeOffset.Now.AddMonths(-ancientMonthDelta);
+        var ancientIssuesInArea =
+            openIssuesGroupedByArea
+                .SingleOrDefault(a => string.Equals(a.Key, issuesByAreaToTriage[i].Area, StringComparison.OrdinalIgnoreCase))?
+                .Count(b =>
+                    string.IsNullOrEmpty(b.MilestoneName)
+                    && b.CreatedAt < ancientIssuesLastDate
+                    && b.IsOpen) ?? 0;
+
+        areaTriageWorksheet.Cells[i + 2, 3 + mauiMilestonesWithAtLeastOneIssue.Count].Formula = $"=HYPERLINK(\"https://github.com/dotnet/maui/issues?q=is%3Aopen+is%3Aissue+no:milestone+label%3A%22{issuesByAreaToTriage[i].Area}%22+created%3A%3C{ancientIssuesLastDate.Year:D4}-{ancientIssuesLastDate.Month:D2}-{ancientIssuesLastDate.Day:D2}\", \"{ancientIssuesInArea.ToString(CultureInfo.InvariantCulture)}\")";
     }
 
     void SetCellColorByValue(Microsoft.Office.Interop.Excel.Range cell, int value)
